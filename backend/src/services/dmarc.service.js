@@ -1,28 +1,64 @@
-import dns from 'dns/promises';
+import dns from 'dns';
+import { promisify } from 'util';
+import { aiService } from './ai.service.js';
+
+// Create a custom DNS resolver with timeout
+const resolver = new dns.Resolver();
+resolver.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']); // Google and Cloudflare DNS
+const resolveTxtAsync = promisify(resolver.resolveTxt.bind(resolver));
 
 class DMARCService {
-  async checkDMARC(domain) {
+  async checkDMARC(domain, includeAIInsights = true) {
     try {
       const dmarcDomain = `_dmarc.${domain}`;
-      const records = await dns.resolveTxt(dmarcDomain);
+
+      // Set a timeout for DNS resolution
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('DNS lookup timeout')), 5000)
+      );
+
+      const records = await Promise.race([
+        resolveTxtAsync(dmarcDomain),
+        timeoutPromise
+      ]);
       const dmarcRecords = records
         .flat()
         .filter(record => record.startsWith('v=DMARC1'));
 
       if (dmarcRecords.length === 0) {
-        return {
+        const result = {
           status: 'fail',
           message: 'No DMARC record found',
           records: [],
         };
+
+        // Add AI insights for failure case
+        if (includeAIInsights) {
+          const aiAnalysis = await aiService.analyzeDMARC(result, domain);
+          if (aiAnalysis.success) {
+            result.aiInsights = aiAnalysis.insights;
+          }
+        }
+
+        return result;
       }
 
       if (dmarcRecords.length > 1) {
-        return {
+        const result = {
           status: 'warning',
           message: 'Multiple DMARC records found',
           records: dmarcRecords,
         };
+
+        // Add AI insights for multiple records case
+        if (includeAIInsights) {
+          const aiAnalysis = await aiService.analyzeDMARC(result, domain);
+          if (aiAnalysis.success) {
+            result.aiInsights = aiAnalysis.insights;
+          }
+        }
+
+        return result;
       }
 
       const dmarcRecord = dmarcRecords[0];
@@ -31,18 +67,38 @@ class DMARCService {
       // Validate policy
       const validation = this.validatePolicy(parsed);
 
-      return {
+      const result = {
         status: validation.status,
         message: validation.message,
         record: dmarcRecord,
         parsed,
         recommendations: validation.recommendations,
       };
+
+      // Add AI insights if enabled
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeDMARC(result, domain);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     } catch (error) {
-      return {
+      const result = {
         status: 'error',
         message: error.message,
       };
+
+      // Add AI insights even for error case
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeDMARC(result, domain);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     }
   }
 

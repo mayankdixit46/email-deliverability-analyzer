@@ -1,43 +1,98 @@
-import dns from 'dns/promises';
+import dns from 'dns';
+import { promisify } from 'util';
+import { aiService } from './ai.service.js';
+
+// Create a custom DNS resolver with timeout
+const resolver = new dns.Resolver();
+resolver.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']); // Google and Cloudflare DNS
+const resolveTxtAsync = promisify(resolver.resolveTxt.bind(resolver));
 
 class SPFService {
-  async checkSPF(domain) {
+  async checkSPF(domain, includeAIInsights = true) {
     try {
-      const records = await dns.resolveTxt(domain);
+      // Set a timeout for DNS resolution
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('DNS lookup timeout')), 5000)
+      );
+
+      const records = await Promise.race([
+        resolveTxtAsync(domain),
+        timeoutPromise
+      ]);
       const spfRecords = records
         .flat()
         .filter(record => record.startsWith('v=spf1'));
 
       if (spfRecords.length === 0) {
-        return {
+        const result = {
           status: 'fail',
           message: 'No SPF record found',
           records: [],
         };
+
+        // Add AI insights for failure case
+        if (includeAIInsights) {
+          const aiAnalysis = await aiService.analyzeSPF(result, domain);
+          if (aiAnalysis.success) {
+            result.aiInsights = aiAnalysis.insights;
+          }
+        }
+
+        return result;
       }
 
       if (spfRecords.length > 1) {
-        return {
+        const result = {
           status: 'fail',
           message: 'Multiple SPF records found (only one allowed)',
           records: spfRecords,
         };
+
+        // Add AI insights for multiple records case
+        if (includeAIInsights) {
+          const aiAnalysis = await aiService.analyzeSPF(result, domain);
+          if (aiAnalysis.success) {
+            result.aiInsights = aiAnalysis.insights;
+          }
+        }
+
+        return result;
       }
 
       const spfRecord = spfRecords[0];
       const parsed = this.parseSPF(spfRecord);
 
-      return {
+      const result = {
         status: 'pass',
         message: 'Valid SPF record found',
         record: spfRecord,
         parsed,
       };
+
+      // Add AI insights if enabled
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeSPF(result, domain);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     } catch (error) {
-      return {
+      const result = {
         status: 'error',
         message: error.message,
       };
+
+      // Add AI insights even for error case
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeSPF(result, domain);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     }
   }
 

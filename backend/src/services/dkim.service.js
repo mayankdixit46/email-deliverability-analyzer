@@ -1,36 +1,82 @@
-import dns from 'dns/promises';
+import dns from 'dns';
+import { promisify } from 'util';
+import { aiService } from './ai.service.js';
+
+// Create a custom DNS resolver with timeout
+const resolver = new dns.Resolver();
+resolver.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']); // Google and Cloudflare DNS
+const resolveTxtAsync = promisify(resolver.resolveTxt.bind(resolver));
 
 class DKIMService {
-  async checkDKIM(domain, selector = 'default') {
+  async checkDKIM(domain, selector = 'default', includeAIInsights = true) {
     try {
       const dkimDomain = `${selector}._domainkey.${domain}`;
-      const records = await dns.resolveTxt(dkimDomain);
+
+      // Set a timeout for DNS resolution
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('DNS lookup timeout')), 5000)
+      );
+
+      const records = await Promise.race([
+        resolveTxtAsync(dkimDomain),
+        timeoutPromise
+      ]);
       const dkimRecords = records.flat();
 
       if (dkimRecords.length === 0) {
-        return {
+        const result = {
           status: 'fail',
           message: `No DKIM record found for selector: ${selector}`,
           selector,
         };
+
+        // Add AI insights for failure case
+        if (includeAIInsights) {
+          const aiAnalysis = await aiService.analyzeDKIM(result, domain, selector);
+          if (aiAnalysis.success) {
+            result.aiInsights = aiAnalysis.insights;
+          }
+        }
+
+        return result;
       }
 
       const dkimRecord = dkimRecords.join('');
       const parsed = this.parseDKIM(dkimRecord);
 
-      return {
+      const result = {
         status: 'pass',
         message: 'Valid DKIM record found',
         selector,
         record: dkimRecord,
         parsed,
       };
+
+      // Add AI insights if enabled
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeDKIM(result, domain, selector);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     } catch (error) {
-      return {
+      const result = {
         status: 'error',
         message: error.message,
         selector,
       };
+
+      // Add AI insights even for error case
+      if (includeAIInsights) {
+        const aiAnalysis = await aiService.analyzeDKIM(result, domain, selector);
+        if (aiAnalysis.success) {
+          result.aiInsights = aiAnalysis.insights;
+        }
+      }
+
+      return result;
     }
   }
 

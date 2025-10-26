@@ -141,38 +141,106 @@ export default function Tests() {
         {tests.length === 0 ? (
           <p className="text-gray-600">No tests run yet. Run your first test above!</p>
         ) : (
-          <div className="space-y-3">
-            {tests.map((test) => (
-              <div
-                key={test.id}
-                className="flex items-center justify-between border border-gray-200 rounded-lg p-4"
-              >
-                <div className="flex items-center gap-4">
-                  {getStatusIcon(test.status)}
-                  <div>
-                    <h3 className="font-medium text-gray-900">
-                      {test.test_type.toUpperCase()} - {test.domain_name}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {new Date(test.created_at).toLocaleString()}
-                    </p>
+          <div className="space-y-4">
+            {tests.map((test) => {
+              const details = typeof test.details === 'string' ? JSON.parse(test.details) : test.details;
+              const aiInsights = details?.aiInsights;
+
+              return (
+                <div
+                  key={test.id}
+                  className="border border-gray-200 rounded-lg p-4"
+                >
+                  {/* Test Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-4">
+                      {getStatusIcon(test.status)}
+                      <div>
+                        <h3 className="font-medium text-gray-900">
+                          {test.test_type.toUpperCase()} - {test.domain_name}
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          {new Date(test.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                        test.status === 'pass'
+                          ? 'bg-green-100 text-green-800'
+                          : test.status === 'fail'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}
+                    >
+                      {test.status}
+                    </span>
                   </div>
+
+                  {/* AI Insights */}
+                  {aiInsights && (
+                    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">🤖</span>
+                        <h4 className="font-semibold text-blue-900">AI Analysis</h4>
+                        {aiInsights.securityScore && (
+                          <span className="ml-auto text-sm font-medium text-blue-700">
+                            Score: {aiInsights.securityScore}/100
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        {aiInsights.explanation && (
+                          <div>
+                            <p className="text-sm font-medium text-blue-900 mb-1">Explanation:</p>
+                            <p className="text-sm text-blue-800">{aiInsights.explanation}</p>
+                          </div>
+                        )}
+
+                        {aiInsights.impact && (
+                          <div>
+                            <span className="text-sm font-medium text-blue-900">Impact: </span>
+                            <span className={`text-sm font-medium ${
+                              aiInsights.impact === 'high' ? 'text-red-600' :
+                              aiInsights.impact === 'medium' ? 'text-yellow-600' :
+                              'text-green-600'
+                            }`}>
+                              {aiInsights.impact.toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        {aiInsights.priority && (
+                          <div>
+                            <span className="text-sm font-medium text-blue-900">Priority: </span>
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              aiInsights.priority === 'critical' ? 'bg-red-100 text-red-800' :
+                              aiInsights.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                              aiInsights.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {aiInsights.priority.toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        {aiInsights.recommendations && aiInsights.recommendations.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium text-blue-900 mb-2">Recommendations:</p>
+                            <ul className="list-disc list-inside space-y-1">
+                              {aiInsights.recommendations.map((rec, idx) => (
+                                <li key={idx} className="text-sm text-blue-800">{rec}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="text-right">
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      test.status === 'pass'
-                        ? 'bg-green-100 text-green-800'
-                        : test.status === 'fail'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
-                  >
-                    {test.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
